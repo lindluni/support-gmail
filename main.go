@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/google/go-github/v35/github"
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -49,21 +50,58 @@ type Email struct {
 	Message   string
 }
 
+type Event struct {
+	Issue struct {
+		Number int    `json:"number"`
+		URL    string `json:"url"`
+	} `json:"issue"`
+
+	Organization struct {
+		Login string `json:"login"`
+	} `json:"organization"`
+
+	Repository struct {
+		Name string `json:"name"`
+	} `json:"repository"`
+}
+
+type GitHubClient struct {
+	client *github.Client
+	event  *Event
+}
+
 func main() {
+	log.Println("Reading GitHub event payload file")
+	bytes, err := os.ReadFile(os.Getenv("GITHUB_EVENT_PATH"))
+	if err != nil {
+		log.Panicf("Unable to read file: %v", err)
+	}
+
+	log.Println("Attempting to unmarshal GitHub event payload")
+	var event *Event
+	err = json.Unmarshal(bytes, &event)
+	if err != nil {
+		log.Panicf("Unable to unmarshal even payload: %v", err)
+	}
+
+	log.Println("Initializing GitHub client")
+	client := &GitHubClient{event: event}
+	client.initGitHubClient()
+
 	log.Println("Retrieving G-Mail credentials")
 	config, err := google.ConfigFromJSON([]byte(os.Getenv("INPUT_CREDENTIALS")), gmail.GmailSendScope) // If modifying these scopes, delete your previously saved token.json.
 	if err != nil {
-		log.Fatalf("Unable to parse client secret file to config: %v", err)
+		client.notifyFailure(fmt.Errorf("unable to parse client secret file to config: %v", err))
 	}
 	log.Println("G-Mail credentials retrieved")
 
 	log.Println("Fetching G-Mail client config")
-	client := getClient(config)
+	gmailClient := getClient(config)
 
 	log.Println("Creating G-Mail client")
-	srv, err := gmail.New(client)
+	srv, err := gmail.New(gmailClient)
 	if err != nil {
-		log.Fatalf("Unable to retrieve Gmail client: %v", err)
+		client.notifyFailure(fmt.Errorf("unable to retrieve Gmail client: %v", err))
 	}
 	log.Println("G-Mail client created successfully")
 
@@ -71,7 +109,7 @@ func main() {
 	log.Printf("Attempting to parse command: [%s]\n", command)
 	approverEmail, userName, userEmail, err := parseCommand(command)
 	if err != nil {
-		log.Panicf("Unable to parse command [%s]: %v", command, err)
+		client.notifyFailure(fmt.Errorf("unable to parse command [%s]: %v", command, err))
 	}
 	log.Println("Successfully parsed command")
 
@@ -84,7 +122,7 @@ func main() {
 		ToName:    "PM/COR",
 		ToEmail:   approverEmail,
 		Subject:   "User Access Request",
-		Message:   fmt.Sprintf(inputTemplate, userName, userEmail),
+		Message:   fmt.Sprintf(inputTemplate, userName, userEmail, client.event.Issue.URL),
 	}
 	from := mail.Address{Name: em.FromName, Address: em.FromEmail}
 	to := mail.Address{Name: em.ToName, Address: em.ToEmail}
@@ -119,9 +157,38 @@ func main() {
 	log.Println("Attempting to send email")
 	_, err = srv.Users.Messages.Send("me", &gmsg).Do()
 	if err != nil {
-		log.Panicf("Unable to send email: %v\n", err)
+		client.notifyFailure(fmt.Errorf("Unable to send email: %v\n", err))
 	}
+	client.notifySuccess()
+}
+
+func (c *GitHubClient) initGitHubClient() {
+	ctx := context.Background()
+	ts := oauth2.StaticTokenSource(
+		&oauth2.Token{AccessToken: os.Getenv("GITHUB_TOKEN")},
+	)
+	tc := oauth2.NewClient(ctx, ts)
+	c.client = github.NewClient(tc)
+}
+
+func (c *GitHubClient) notifyFailure(err error) {
+	_, _, clientErr := c.client.Issues.CreateComment(context.Background(), c.event.Organization.Login, c.event.Repository.Name, c.event.Issue.Number, &github.IssueComment{
+		Body: github.String(fmt.Sprintf("Failed to send email: %v", err)),
+	})
+	if clientErr != nil {
+		log.Panicf("Unable to create issue failure notice: %v", clientErr)
+	}
+	log.Panic(err)
+}
+
+func (c *GitHubClient) notifySuccess() {
 	log.Println("Email sent successfully")
+	_, _, err := c.client.Issues.CreateComment(context.Background(), c.event.Organization.Login, c.event.Repository.Name, c.event.Issue.Number, &github.IssueComment{
+		Body: github.String("Email sent successfully"),
+	})
+	if err != nil {
+		log.Panicf("Unable to create issue failure notive: %v", err)
+	}
 }
 
 func parseCommand(command string) (string, string, string, error) {

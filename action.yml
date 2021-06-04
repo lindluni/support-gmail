@@ -3,12 +3,16 @@ description: 'Used to send and process emails from Pull Requests and Commits and
 inputs:
   command:
     description: 'Command to be executed'
-    required: false
+    required: true
     default: ${{ github.event.comment.body }}
   from:
-    description: 'Email address of the originator'
-    required: false
+    description: 'Email address of the originator to CC'
+    required: true
     default: ''
+  github_token:
+    description: 'Token to authenticate to the GitHub API'
+    required: true
+    default: ${{ secrets.GITHUB_TOKEN }}
   template:
     description: 'Format template for the body of the email'
     required: true
