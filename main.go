@@ -165,7 +165,7 @@ func main() {
 func (c *GitHubClient) initGitHubClient() {
 	ctx := context.Background()
 	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: os.Getenv("GITHUB_TOKEN")},
+		&oauth2.Token{AccessToken: os.Getenv("INPUT_GITHUB_TOKEN")},
 	)
 	tc := oauth2.NewClient(ctx, ts)
 	c.client = github.NewClient(tc)
