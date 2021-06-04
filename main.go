@@ -52,8 +52,7 @@ type Email struct {
 
 type Event struct {
 	Issue struct {
-		Number int    `json:"number"`
-		URL    string `json:"url"`
+		Number int `json:"number"`
 	} `json:"issue"`
 
 	Organization struct {
@@ -116,13 +115,14 @@ func main() {
 	log.Println("Forming email object")
 	inputFrom := os.Getenv("INPUT_FROM")
 	inputTemplate := os.Getenv("INPUT_TEMPLATE")
+	url := fmt.Sprintf("https://github.com/%s/%s/issues/%d", event.Organization.Login, event.Repository.Name, event.Issue.Number)
 	em := &Email{
 		FromName:  "GitHub",
 		FromEmail: inputFrom,
 		ToName:    "PM/COR",
 		ToEmail:   approverEmail,
 		Subject:   "User Access Request",
-		Message:   fmt.Sprintf(inputTemplate, userName, userEmail, client.event.Issue.URL),
+		Message:   fmt.Sprintf(inputTemplate, userName, userEmail, url),
 	}
 	from := mail.Address{Name: em.FromName, Address: em.FromEmail}
 	to := mail.Address{Name: em.ToName, Address: em.ToEmail}
