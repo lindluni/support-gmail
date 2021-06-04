@@ -187,7 +187,15 @@ func (c *GitHubClient) notifySuccess() {
 		Body: github.String("Email sent successfully"),
 	})
 	if err != nil {
-		log.Panicf("Unable to create issue failure notive: %v", err)
+		log.Panicf("Unable to create issue failure notice: %v", err)
+	}
+}
+
+func (c *GitHubClient) addEmailSentLabel() {
+	log.Println("Adding the email-sent label to the issue")
+	_, _, err := c.client.Issues.AddLabelsToIssue(context.Background(), c.event.Organization.Login, c.event.Repository.Name, c.event.Issue.Number, []string{"email-sent"})
+	if err != nil {
+		log.Panicf("Unable to add label to issue: %v", err)
 	}
 }
 
