@@ -160,6 +160,7 @@ func main() {
 		client.notifyFailure(fmt.Errorf("Unable to send email: %v\n", err))
 	}
 	client.notifySuccess()
+	client.addEmailSentLabel()
 }
 
 func (c *GitHubClient) initGitHubClient() {
@@ -182,9 +183,9 @@ func (c *GitHubClient) notifyFailure(err error) {
 }
 
 func (c *GitHubClient) notifySuccess() {
-	log.Println("Email sent successfully")
+	log.Println("Successfully sent approval email")
 	_, _, err := c.client.Issues.CreateComment(context.Background(), c.event.Organization.Login, c.event.Repository.Name, c.event.Issue.Number, &github.IssueComment{
-		Body: github.String("Email sent successfully"),
+		Body: github.String("Successfully sent approval email"),
 	})
 	if err != nil {
 		log.Panicf("Unable to create issue failure notice: %v", err)
