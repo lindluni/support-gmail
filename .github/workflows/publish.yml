@@ -5,6 +5,7 @@ on:
       - v*
 jobs:
   publish:
+    name: Publish
     runs-on: ubuntu-latest
     steps:
       - name: Login to GHCR
