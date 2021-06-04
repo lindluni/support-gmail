@@ -12,7 +12,7 @@ inputs:
   github_token:
     description: 'Token to authenticate to the GitHub API'
     required: true
-    default: ${{ secrets.GITHUB_TOKEN }}
+    default: ${{ github.token }}
   template:
     description: 'Format template for the body of the email'
     required: true
