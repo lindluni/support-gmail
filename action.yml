@@ -5,6 +5,10 @@ inputs:
     description: 'Command to be executed'
     required: true
     default: ${{ github.event.comment.body }}
+  credentials:
+    description: 'Minified G-Mail credentials.json content'
+    required: true
+    default: ''
   from:
     description: 'Email address of the originator to CC'
     required: true
@@ -13,12 +17,20 @@ inputs:
     description: 'Token to authenticate to the GitHub API'
     required: true
     default: ${{ github.token }}
+  issue_number:
+    description: 'GitHub issue number'
+    required: true
+    default: ${{ github.event.issue.number }}
+  owner:
+    description: 'The organization or user who owns the repo'
+    required: true
+    default: ${{ github.event.organization.login }}
+  repository:
+    description: 'The repository that triggered the action'
+    required: true
+    default: ${{ github.event.repository.name }}
   template:
     description: 'Format template for the body of the email'
-    required: true
-    default: ''
-  credentials:
-    description: 'Minified G-Mail credentials.json content'
     required: true
     default: ''
   token:
@@ -27,4 +39,5 @@ inputs:
     default: ''
 runs:
   using: 'docker'
-  image: docker://ghcr.io/lindluni/support-gmail:1.0.0
+  image: 'Dockerfile'
+#  image: docker://ghcr.io/lindluni/support-gmail:1.0.0

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/mail"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/google/go-github/v35/github"
@@ -27,42 +28,26 @@ type Email struct {
 	Message   string
 }
 
-type Event struct {
-	Issue struct {
-		Number int `json:"number"`
-	} `json:"issue"`
-
-	Organization struct {
-		Login string `json:"login"`
-	} `json:"organization"`
-
-	Repository struct {
-		Name string `json:"name"`
-	} `json:"repository"`
-}
-
 type GitHubClient struct {
 	client *github.Client
-	event  *Event
+
+	issueNumber int
+	owner       string
+	repo        string
 }
 
 func main() {
-	log.Println("Reading GitHub event payload file")
-	bytes, err := os.ReadFile(os.Getenv("GITHUB_EVENT_PATH"))
-	if err != nil {
-		log.Panicf("Unable to read file: %v", err)
-	}
-
-	log.Println("Attempting to unmarshal GitHub event payload")
-	var event *Event
-	err = json.Unmarshal(bytes, &event)
-	if err != nil {
-		log.Panicf("Unable to unmarshal even payload: %v", err)
-	}
-
 	log.Println("Initializing GitHub client")
-	client := &GitHubClient{event: event}
+	client := &GitHubClient{}
 	client.initGitHubClient()
+
+	issueNumber, err := strconv.Atoi(os.Getenv("INPUT_ISSUE_NUMBER"))
+	if err != nil {
+		client.notifyFailure(fmt.Errorf("unable to convert issue number to integer: %v", err))
+	}
+	client.issueNumber = issueNumber
+	client.owner = os.Getenv("INPUT_OWNER")
+	client.repo = os.Getenv("INPUT_REPOSITORY")
 
 	log.Println("Retrieving G-Mail credentials")
 	config, err := google.ConfigFromJSON([]byte(os.Getenv("INPUT_CREDENTIALS")), gmail.GmailSendScope) // If modifying these scopes, delete your previously saved token.json.
@@ -92,7 +77,7 @@ func main() {
 	log.Println("Forming email object")
 	inputFrom := os.Getenv("INPUT_FROM")
 	inputTemplate := os.Getenv("INPUT_TEMPLATE")
-	url := fmt.Sprintf("https://github.com/%s/%s/issues/%d", event.Organization.Login, event.Repository.Name, event.Issue.Number)
+	url := fmt.Sprintf("https://github.com/%s/%s/issues/%d", client.owner, client.repo, client.issueNumber)
 	em := &Email{
 		FromName:  "GitHub",
 		FromEmail: inputFrom,
@@ -150,7 +135,7 @@ func (c *GitHubClient) initGitHubClient() {
 }
 
 func (c *GitHubClient) notifyFailure(err error) {
-	_, _, clientErr := c.client.Issues.CreateComment(context.Background(), c.event.Organization.Login, c.event.Repository.Name, c.event.Issue.Number, &github.IssueComment{
+	_, _, clientErr := c.client.Issues.CreateComment(context.Background(), c.owner, c.repo, c.issueNumber, &github.IssueComment{
 		Body: github.String(fmt.Sprintf("Failed to send email: %v", err)),
 	})
 	if clientErr != nil {
@@ -161,7 +146,7 @@ func (c *GitHubClient) notifyFailure(err error) {
 
 func (c *GitHubClient) notifySuccess() {
 	log.Println("Successfully sent approval email")
-	_, _, err := c.client.Issues.CreateComment(context.Background(), c.event.Organization.Login, c.event.Repository.Name, c.event.Issue.Number, &github.IssueComment{
+	_, _, err := c.client.Issues.CreateComment(context.Background(), c.owner, c.repo, c.issueNumber, &github.IssueComment{
 		Body: github.String("Successfully sent approval email"),
 	})
 	if err != nil {
@@ -171,7 +156,7 @@ func (c *GitHubClient) notifySuccess() {
 
 func (c *GitHubClient) addEmailSentLabel() {
 	log.Println("Adding the email-sent label to the issue")
-	_, _, err := c.client.Issues.AddLabelsToIssue(context.Background(), c.event.Organization.Login, c.event.Repository.Name, c.event.Issue.Number, []string{"email-sent"})
+	_, _, err := c.client.Issues.AddLabelsToIssue(context.Background(), c.owner, c.repo, c.issueNumber, []string{"email-sent"})
 	if err != nil {
 		log.Panicf("Unable to add label to issue: %v", err)
 	}
