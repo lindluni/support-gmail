@@ -18,29 +18,6 @@ import (
 	"google.golang.org/api/gmail/v1"
 )
 
-// Retrieve a token, saves the token, then returns the generated client.
-func getClient(config *oauth2.Config) *http.Client {
-	log.Println("Attempting to retrieve G-Mail token")
-	tok, err := getToken()
-	if err != nil {
-		log.Panicf("Unable to retrieve token: %v", err)
-	}
-	log.Println("G-Mail token retrieved successfully")
-
-	log.Println("Creating G-Mail client config")
-	return config.Client(context.Background(), tok)
-}
-
-// Retrieves a token from a local file.
-func getToken() (*oauth2.Token, error) {
-	log.Println("Retrieving G-Mail token from environment")
-	token := os.Getenv("INPUT_TOKEN")
-	tok := &oauth2.Token{}
-	log.Println("Marshalling G-Mail token")
-	err := json.Unmarshal([]byte(token), tok)
-	return tok, err
-}
-
 type Email struct {
 	FromName  string
 	FromEmail string
@@ -198,6 +175,27 @@ func (c *GitHubClient) addEmailSentLabel() {
 	if err != nil {
 		log.Panicf("Unable to add label to issue: %v", err)
 	}
+}
+
+func getClient(config *oauth2.Config) *http.Client {
+	log.Println("Attempting to retrieve G-Mail token")
+	tok, err := getToken()
+	if err != nil {
+		log.Panicf("Unable to retrieve token: %v", err)
+	}
+	log.Println("G-Mail token retrieved successfully")
+
+	log.Println("Creating G-Mail client config")
+	return config.Client(context.Background(), tok)
+}
+
+func getToken() (*oauth2.Token, error) {
+	log.Println("Retrieving G-Mail token from environment")
+	token := os.Getenv("INPUT_TOKEN")
+	tok := &oauth2.Token{}
+	log.Println("Marshalling G-Mail token")
+	err := json.Unmarshal([]byte(token), tok)
+	return tok, err
 }
 
 func parseCommand(command string) (string, string, string, error) {
