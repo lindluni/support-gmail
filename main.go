@@ -19,50 +19,25 @@ import (
 
 // Retrieve a token, saves the token, then returns the generated client.
 func getClient(config *oauth2.Config) *http.Client {
-	tokFile := "token.json"
-	tok, err := tokenFromFile()
+	log.Println("Attempting to retrieve G-Mail token")
+	tok, err := getToken()
 	if err != nil {
-		tok = getTokenFromWeb(config)
-		saveToken(tokFile, tok)
+		log.Panicf("Unable to retrieve token: %v", err)
 	}
+	log.Println("G-Mail token retrieved successfully")
+
+	log.Println("Creating G-Mail client config")
 	return config.Client(context.Background(), tok)
 }
 
-// Request a token from the web, then returns the retrieved token.
-func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
-	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
-	fmt.Printf("Go to the following link in your browser then type the "+
-		"authorization code: \n%v\n", authURL)
-
-	var authCode string
-	if _, err := fmt.Scan(&authCode); err != nil {
-		log.Fatalf("Unable to read authorization code: %v", err)
-	}
-
-	tok, err := config.Exchange(context.TODO(), authCode)
-	if err != nil {
-		log.Fatalf("Unable to retrieve token from web: %v", err)
-	}
-	return tok
-}
-
 // Retrieves a token from a local file.
-func tokenFromFile() (*oauth2.Token, error) {
+func getToken() (*oauth2.Token, error) {
+	log.Println("Retrieving G-Mail token from environment")
 	token := os.Getenv("INPUT_TOKEN")
 	tok := &oauth2.Token{}
+	log.Println("Marshalling G-Mail token")
 	err := json.Unmarshal([]byte(token), tok)
 	return tok, err
-}
-
-// Saves a token to a file path.
-func saveToken(path string, token *oauth2.Token) {
-	fmt.Printf("Saving credential file to: %s\n", path)
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		log.Fatalf("Unable to cache oauth token: %v", err)
-	}
-	defer f.Close()
-	json.NewEncoder(f).Encode(token)
 }
 
 type Email struct {
@@ -75,87 +50,111 @@ type Email struct {
 }
 
 func main() {
-	creds := os.Getenv("INPUT_CREDENTIALS")
-
-	// If modifying these scopes, delete your previously saved token.json.
-	config, err := google.ConfigFromJSON([]byte(creds), gmail.GmailSendScope)
+	log.Println("Retrieving G-Mail credentials")
+	config, err := google.ConfigFromJSON([]byte(os.Getenv("INPUT_CREDENTIALS")), gmail.GmailSendScope) // If modifying these scopes, delete your previously saved token.json.
 	if err != nil {
 		log.Fatalf("Unable to parse client secret file to config: %v", err)
 	}
+	log.Println("G-Mail credentials retrieved")
+
+	log.Println("Fetching G-Mail client config")
 	client := getClient(config)
 
+	log.Println("Creating G-Mail client")
 	srv, err := gmail.New(client)
 	if err != nil {
 		log.Fatalf("Unable to retrieve Gmail client: %v", err)
 	}
+	log.Println("G-Mail client created successfully")
 
-	approverEmail, userName, userEmail, err := parseCommand(os.Getenv("INPUT_COMMAND"))
+	command := os.Getenv("INPUT_COMMAND")
+	log.Printf("Attempting to parse command: [%s]\n", command)
+	approverEmail, userName, userEmail, err := parseCommand(command)
 	if err != nil {
-		panic(err)
+		log.Panicf("Unable to parse command [%s]: %v", command, err)
 	}
+	log.Println("Successfully parsed command")
 
+	log.Println("Forming email object")
+	inputFrom := os.Getenv("INPUT_FROM")
+	inputTemplate := os.Getenv("INPUT_TEMPLATE")
 	em := &Email{
 		FromName:  "GitHub",
-		FromEmail: os.Getenv("INPUT_FROM"),
+		FromEmail: inputFrom,
 		ToName:    "PM/COR",
 		ToEmail:   approverEmail,
 		Subject:   "User Access Request",
-		Message:   fmt.Sprintf(os.Getenv("INPUT_TEMPLATE"), userName, userEmail),
+		Message:   fmt.Sprintf(inputTemplate, userName, userEmail),
 	}
 	from := mail.Address{Name: em.FromName, Address: em.FromEmail}
 	to := mail.Address{Name: em.ToName, Address: em.ToEmail}
 
+	log.Println("Setting headers")
 	header := make(map[string]string)
 	header["From"] = from.String()
 	header["To"] = to.String()
 	if !strings.Contains(os.Getenv("INPUT_COMMAND"), "skip") {
-		header["cc"] = os.Getenv("INPUT_FROM")
+		header["cc"] = inputFrom
+	} else {
+		log.Printf("Skipping emailing CC list: [%s]\n", inputFrom)
 	}
 	header["Subject"] = em.Subject
 	header["MIME-Version"] = "1.0"
 	header["Content-Type"] = `text/plain; charset="utf-8"`
 
+	log.Println("Appending headers")
 	var msg string
 	for k, v := range header {
 		msg += fmt.Sprintf("%s: %s\r\n", k, v)
 	}
+
+	log.Println("Appending message")
 	msg += "\r\n" + em.Message
 
+	log.Println("Encoding email")
 	gmsg := gmail.Message{
 		Raw: base64.RawURLEncoding.EncodeToString([]byte(msg)),
 	}
 
+	log.Println("Attempting to send email")
 	_, err = srv.Users.Messages.Send("me", &gmsg).Do()
 	if err != nil {
-		panic(err)
+		log.Panicf("Unable to send email: %v\n", err)
 	}
-
+	log.Println("Email sent successfully")
 }
 
 func parseCommand(command string) (string, string, string, error) {
-	var approver, user, email string
-	var approverFlag, userFlag, emailFlag bool
+	log.Printf("Parsing command line arguments from command: [%s]\n", command)
 	commands, err := parseCommandLine(command)
 	if err != nil {
-		panic(err)
+		return "", "", "", fmt.Errorf("unable to parse command line arguments")
 	}
+
+	var approver, user, email string
+	var approverFlag, userFlag, emailFlag bool
 	switch commands[0] {
 	case "/approve":
+		log.Println("Identified command: [/approve]")
 		if len(commands) < 8 {
 			return "", "", "", fmt.Errorf("not enough arguments in command")
 		}
 		for i, command := range commands {
 			if command == "--pm" || command == "-pm" {
+				log.Println("Identified flag: [--pm]")
 				approver = commands[i+1]
 				approverFlag = true
 			} else if command == "--name" || command == "-name" {
+				log.Println("Identified flag: [--name]")
 				if commands[i+2] == "--email" || commands[i+2] == "-email" {
 					user = commands[i+1]
 				} else {
+					log.Println("Identified non-quoted name, using parse-forward to retrieve last name")
 					user = fmt.Sprintf("%s %s", commands[i+1], commands[i+2])
 				}
 				userFlag = true
 			} else if command == "--email" || command == "-email" {
+				log.Println("Identified flag: [--email]")
 				email = commands[i+1]
 				emailFlag = true
 			}
