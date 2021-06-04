@@ -93,9 +93,9 @@ func main() {
 	header := make(map[string]string)
 	header["From"] = from.String()
 	header["To"] = to.String()
+	header["cc"] = inputFrom
 	if !strings.Contains(os.Getenv("INPUT_COMMAND"), "skip") {
-		header["cc"] = inputFrom
-	} else {
+		delete(header, "cc")
 		log.Printf("Skipping emailing CC list: [%s]\n", inputFrom)
 	}
 	header["Subject"] = em.Subject
