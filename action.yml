@@ -39,5 +39,5 @@ inputs:
     default: ''
 runs:
   using: 'docker'
-  image: 'Dockerfile'
-#  image: docker://ghcr.io/lindluni/support-gmail:1.0.0
+#  image: 'Dockerfile'
+  image: docker://ghcr.io/lindluni/support-gmail:1.0.0
